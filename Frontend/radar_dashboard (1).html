@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IWR6843ISK — mmWave Radar Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --white: #ffffff;
+    --bg: #f4f6f9;
+    --bg2: #edf0f5;
+    --surface2: #f8fafc;
+    --border: #e2e7ef;
+    --text: #0f1c2e;
+    --text2: #3d5068;
+    --text3: #7a8fa6;
+    --navy: #0a1628;
+    --blue: #1a56db;
+    --blue-light: #e8f0fe;
+    --empty-color: #6b7c93;
+    --empty-bg: #f1f4f8;
+    --static-color: #d97706;
+    --static-bg: #fffbeb;
+    --human-color: #059669;
+    --human-bg: #ecfdf5;
+    --shadow-sm: 0 1px 3px rgba(15,28,46,0.07), 0 1px 2px rgba(15,28,46,0.04);
+    --shadow: 0 4px 16px rgba(15,28,46,0.08), 0 2px 6px rgba(15,28,46,0.04);
+    --radius: 14px;
+    --radius-sm: 8px;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── HEADER ── */
+  header {
+    background: var(--white);
+    border-bottom: 1px solid var(--border);
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .logo { display:flex; align-items:center; gap:12px; }
+  .logo-mark {
+    width:36px; height:36px;
+    background: var(--navy);
+    border-radius: 9px;
+    display:flex; align-items:center; justify-content:center;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .logo-mark::after {
+    content:'';
+    position:absolute;
+    bottom:0; left:0; right:0;
+    height:40%;
+    background: var(--blue);
+    opacity: 0.4;
+  }
+  .logo-name { font-size:15px; font-weight:700; color:var(--navy); letter-spacing:-0.3px; }
+  .logo-sub  { font-size:11px; color:var(--text3); font-family:'DM Mono',monospace; margin-top:1px; }
+
+  /* Dataset tabs */
+  .ds-tabs {
+    display:flex; align-items:center; gap:4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius:999px;
+    padding: 4px 5px;
+    overflow-x: auto;
+    max-width: 600px;
+  }
+  .ds-tabs::-webkit-scrollbar { display:none; }
+  .ds-btn {
+    font-family:'DM Mono',monospace;
+    font-size:10px; font-weight:500;
+    color:var(--text3);
+    border:none; background:transparent;
+    padding:5px 11px;
+    border-radius:999px;
+    cursor:pointer;
+    transition:all 0.18s;
+    white-space:nowrap;
+    letter-spacing:0.3px;
+  }
+  .ds-btn:hover { color:var(--text); background:var(--white); }
+  .ds-btn.active {
+    background:var(--white);
+    color:var(--blue);
+    box-shadow:var(--shadow-sm);
+    font-weight:600;
+  }
+
+  .header-right { display:flex; align-items:center; gap:12px; }
+  .live-pill {
+    display:flex; align-items:center; gap:7px;
+    background:#ecfdf5; border:1px solid #a7f3d0;
+    border-radius:999px; padding:5px 12px 5px 9px;
+    font-size:11px; font-weight:600; color:#059669; letter-spacing:0.5px;
+    transition: all 0.3s;
+  }
+  .live-pill.disconnected {
+    background:#fef2f2; border-color:#fecaca; color:#dc2626;
+  }
+  .live-pill.waiting {
+    background:#fffbeb; border-color:#fde68a; color:#d97706;
+  }
+  .live-dot {
+    width:7px; height:7px; border-radius:50%;
+    background:#059669;
+    box-shadow:0 0 0 0 rgba(5,150,105,0.5);
+    animation:live-pulse 1.4s ease-in-out infinite;
+  }
+  .live-pill.disconnected .live-dot { background:#dc2626; box-shadow:none; animation:none; }
+  .live-pill.waiting .live-dot { background:#d97706; animation:live-pulse 2s ease-in-out infinite; }
+  @keyframes live-pulse {
+    0%  { box-shadow:0 0 0 0 rgba(5,150,105,0.5); }
+    70% { box-shadow:0 0 0 6px rgba(5,150,105,0); }
+    100%{ box-shadow:0 0 0 0 rgba(5,150,105,0); }
+  }
+  .chip {
+    font-family:'DM Mono',monospace; font-size:10px;
+    color:var(--text3); background:var(--bg2);
+    border:1px solid var(--border);
+    border-radius:6px; padding:5px 10px;
+  }
+  .chip.live-source { color:var(--blue); background:var(--blue-light); border-color:#bfdbfe; }
+
+  /* ── MAIN ── */
+  .main {
+    display:grid;
+    grid-template-columns: 1fr 320px;
+    gap:20px;
+    padding:24px 32px;
+    max-width:1440px;
+    margin:0 auto;
+    align-items:start;
+  }
+
+  /* ── PLOT CARD ── */
+  .plot-card {
+    background:var(--white);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+    animation: fadein 0.4s ease both;
+  }
+  .plot-header {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:16px 20px;
+    border-bottom:1px solid var(--border);
+    background:var(--surface2);
+  }
+  .plot-title {
+    font-size:13px; font-weight:600; color:var(--text); letter-spacing:-0.1px;
+  }
+  .plot-title span {
+    font-size:11px; color:var(--text3); font-weight:400;
+    margin-left:8px; font-family:'DM Mono',monospace;
+  }
+  .toolbar { display:flex; align-items:center; gap:8px; }
+  .view-toggle {
+    display:flex;
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:7px; padding:3px; gap:2px;
+  }
+  .vbtn {
+    font-size:11px; font-weight:500;
+    font-family:'DM Mono',monospace;
+    color:var(--text3); background:transparent; border:none;
+    padding:4px 12px; border-radius:5px; cursor:pointer;
+    transition:all 0.15s;
+  }
+  .vbtn.active, .vbtn:hover {
+    background:var(--white); color:var(--blue); box-shadow:var(--shadow-sm);
+  }
+  .pt-badge {
+    font-family:'DM Mono',monospace; font-size:10px; font-weight:500;
+    color:var(--blue); background:var(--blue-light);
+    border:1px solid #bfdbfe; border-radius:6px;
+    padding:4px 10px; min-width:56px; text-align:center;
+  }
+
+  #radarPlot { min-height:520px; background:var(--white); }
+
+  .legend-bar {
+    display:flex; align-items:center; gap:20px;
+    padding:12px 20px;
+    border-top:1px solid var(--border);
+    background:var(--surface2);
+  }
+  .legend-item { display:flex; align-items:center; gap:7px; font-size:11px; color:var(--text3); }
+  .legend-dot  { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
+  /* ── RIGHT PANEL ── */
+  .right-panel { display:flex; flex-direction:column; gap:16px; }
+
+  /* ── STATUS CARD ── */
+  .status-card {
+    background:var(--white);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow);
+    overflow:hidden;
+    transition:border-color 0.35s, box-shadow 0.35s;
+    animation:fadein 0.4s 0.1s ease both;
+  }
+  .status-card.empty  { border-top:3px solid var(--empty-color); }
+  .status-card.static { border-top:3px solid var(--static-color); box-shadow:0 4px 20px rgba(217,119,6,0.1); }
+  .status-card.human  { border-top:3px solid var(--human-color);  box-shadow:0 4px 24px rgba(5,150,105,0.13); }
+
+  .status-body {
+    padding:26px 22px 20px;
+    text-align:center;
+    display:flex; flex-direction:column; align-items:center;
+    gap:12px; min-height:220px; justify-content:center;
+    position:relative;
+  }
+  .status-eyebrow {
+    font-size:10px; font-weight:600; letter-spacing:1.5px;
+    text-transform:uppercase; color:var(--text3);
+    font-family:'DM Mono',monospace;
+  }
+  .status-icon-wrap {
+    width:72px; height:72px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:32px; position:relative; transition:background 0.35s;
+  }
+  .status-card.empty  .status-icon-wrap { background:var(--empty-bg); }
+  .status-card.static .status-icon-wrap { background:var(--static-bg); }
+  .status-card.human  .status-icon-wrap { background:var(--human-bg); }
+
+  .ring {
+    position:absolute; inset:-12px; border-radius:50%;
+    border:2px solid var(--human-color); opacity:0;
+  }
+  .status-card.human .ring:nth-child(1) { animation:ring-out 2.2s ease-out infinite; }
+  .status-card.human .ring:nth-child(2) { animation:ring-out 2.2s ease-out 0.8s infinite; }
+  @keyframes ring-out {
+    0%  { transform:scale(0.85); opacity:0.5; }
+    100%{ transform:scale(1.9);  opacity:0; }
+  }
+
+  .status-label {
+    font-size:17px; font-weight:700; letter-spacing:-0.3px;
+    transition:color 0.35s; line-height:1.2;
+  }
+  .status-card.empty  .status-label { color:var(--empty-color); }
+  .status-card.static .status-label { color:var(--static-color); }
+  .status-card.human  .status-label { color:var(--human-color); }
+
+  .status-desc { font-size:12px; color:var(--text3); line-height:1.5; max-width:200px; }
+
+  .conf-row {
+    width:100%; padding:14px 22px;
+    border-top:1px solid var(--border);
+    background:var(--surface2);
+    display:flex; flex-direction:column; gap:7px;
+  }
+  .conf-header { display:flex; justify-content:space-between; align-items:center; }
+  .conf-header span:first-child {
+    font-weight:600; letter-spacing:0.5px;
+    color:var(--text3); text-transform:uppercase;
+    font-size:10px; font-family:'DM Mono',monospace;
+  }
+  .conf-val { font-family:'DM Mono',monospace; font-size:12px; font-weight:500; color:var(--text); }
+  .conf-track { height:5px; background:var(--bg2); border-radius:999px; overflow:hidden; }
+  .conf-fill {
+    height:100%; border-radius:999px;
+    transition:width 0.5s cubic-bezier(.4,0,.2,1), background 0.35s;
+  }
+  .status-card.empty  .conf-fill { background:var(--empty-color); }
+  .status-card.static .conf-fill { background:var(--static-color); }
+  .status-card.human  .conf-fill { background:var(--human-color); }
+
+  /* ── INFO CARD ── */
+  .info-card {
+    background:var(--white);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    box-shadow:var(--shadow-sm);
+    padding:18px 20px;
+    animation:fadein 0.4s 0.15s ease both;
+  }
+  .info-title {
+    font-size:10px; font-weight:600; text-transform:uppercase;
+    letter-spacing:1px; color:var(--text3);
+    font-family:'DM Mono',monospace; margin-bottom:14px;
+  }
+  .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .info-item {
+    background:var(--bg); border:1px solid var(--border);
+    border-radius:var(--radius-sm); padding:12px 14px;
+  }
+  .info-key {
+    font-size:10px; color:var(--text3);
+    font-family:'DM Mono',monospace; letter-spacing:0.3px; margin-bottom:4px;
+  }
+  .info-val {
+    font-size:20px; font-weight:700; color:var(--navy);
+    font-family:'DM Mono',monospace; line-height:1;
+  }
+  .info-val-sub { font-size:9px; color:var(--text3); margin-top:3px; font-family:'DM Mono',monospace; }
+
+  /* ── FOOTER ── */
+  footer {
+    background:var(--white);
+    border-top:1px solid var(--border);
+    padding:12px 32px;
+    display:flex; align-items:center; justify-content:space-between;
+    font-family:'DM Mono',monospace; font-size:10px; color:var(--text3);
+  }
+  footer strong { color:var(--text2); }
+  #frameNum { color:var(--blue); font-weight:500; }
+
+  @keyframes fadein { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-mark">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M6.3 17.7A8 8 0 1 1 17.7 6.3" opacity=".6"/>
+        <path d="M3.2 20.8A13 13 0 1 1 20.8 3.2" opacity=".3"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-name">mmWave Radar</div>
+      <div class="logo-sub">IWR6843ISK · 60–64 GHz</div>
+    </div>
+  </div>
+
+  <div class="ds-tabs" id="dsTabs"></div>
+
+  <div class="header-right">
+    <div class="live-pill waiting" id="livePill"><div class="live-dot"></div><span id="liveLabel">CONNECTING</span></div>
+    <div class="chip" id="rateChip">100 ms</div>
+    <div class="chip">FMCW</div>
+    <div class="chip live-source" id="sourceChip">LIVE SENSOR</div>
+  </div>
+</header>
+
+<!-- MAIN -->
+<div class="main">
+
+  <div class="plot-card">
+    <div class="plot-header">
+      <div class="plot-title">Point Cloud Visualizer <span>IWR6843ISK</span></div>
+      <div class="toolbar">
+        <div class="view-toggle">
+          <button class="vbtn active" onclick="setView('2d',this)">2D</button>
+          <button class="vbtn" onclick="setView('3d',this)">3D</button>
+        </div>
+        <div class="pt-badge" id="ptBadge">— pts</div>
+      </div>
+    </div>
+    <div id="radarPlot"></div>
+    <div class="legend-bar">
+      <div class="legend-item"><div class="legend-dot" style="background:#1a56db"></div>Static / near-zero Doppler</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#d97706"></div>Slow movement</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#059669"></div>Human / micro-Doppler active</div>
+    </div>
+  </div>
+
+  <div class="right-panel">
+
+    <div class="status-card empty" id="statusCard">
+      <div class="status-body">
+        <div class="status-eyebrow">Detection Status</div>
+        <div class="status-icon-wrap">
+          <div class="ring"></div>
+          <div class="ring"></div>
+          <span id="statusIcon">◯</span>
+        </div>
+        <div class="status-label" id="statusLabel">EMPTY SPACE</div>
+        <div class="status-desc" id="statusDesc">No targets detected in radar range</div>
+      </div>
+      <div class="conf-row">
+        <div class="conf-header">
+          <span>Confidence</span>
+          <span class="conf-val" id="confVal">—</span>
+        </div>
+        <div class="conf-track">
+          <div class="conf-fill" id="confFill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="info-card">
+      <div class="info-title">Frame Info</div>
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-key">POINTS</div>
+          <div class="info-val" id="iPoints">0</div>
+          <div class="info-val-sub">reflections</div>
+        </div>
+        <div class="info-item">
+          <div class="info-key">FRAME</div>
+          <div class="info-val" id="iFrame">0000</div>
+          <div class="info-val-sub">total</div>
+        </div>
+        <div class="info-item">
+          <div class="info-key">POLL RATE</div>
+          <div class="info-val">100</div>
+          <div class="info-val-sub">ms / poll</div>
+        </div>
+        <div class="info-item">
+          <div class="info-key">RATE</div>
+          <div class="info-val">500</div>
+          <div class="info-val-sub">ms / frame</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer>
+  <span>Texas Instruments <strong>IWR6843ISK</strong> · mmWave SDK 3.x · FMCW Chirp</span>
+  <span>Frame <span id="frameNum">0000</span> · <span id="tsDisp">--:--:--</span></span>
+  <span>BW: 4 GHz · Range Res: ~3.75 cm · 60–64 GHz</span>
+</footer>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════════════
+let is3D = false, plotReady = false;
+let localFrame = 0;       // local display counter
+let consecutiveFails = 0; // track connection health
+
+const POLL_MS = 100;      // poll backend every 100ms
+
+// ══════════════════════════════════════════════════════════════════════════
+//  PLOTLY LAYOUTS
+// ══════════════════════════════════════════════════════════════════════════
+const L2D = {
+  paper_bgcolor:'rgba(0,0,0,0)', plot_bgcolor:'#fafbfd',
+  font:{family:'DM Mono,monospace',color:'#7a8fa6',size:10},
+  xaxis:{title:'X (m)',gridcolor:'#edf0f5',zerolinecolor:'#d0d8e6',range:[-5,5],tickfont:{size:9}},
+  yaxis:{title:'Y (m)',gridcolor:'#edf0f5',zerolinecolor:'#d0d8e6',range:[0,6],tickfont:{size:9}},
+  margin:{l:50,r:20,t:16,b:50},showlegend:false,
+};
+const L3D = {
+  paper_bgcolor:'rgba(0,0,0,0)',
+  scene:{bgcolor:'#fafbfd',
+    xaxis:{title:'X',gridcolor:'#edf0f5',range:[-5,5]},
+    yaxis:{title:'Y',gridcolor:'#edf0f5',range:[0,6]},
+    zaxis:{title:'Z',gridcolor:'#edf0f5',range:[-2,2]},
+    camera:{eye:{x:1.6,y:-1.6,z:1.2}}},
+  margin:{l:0,r:0,t:0,b:0},showlegend:false,
+};
+const PCFG = {displayModeBar:false, responsive:true};
+
+// ══════════════════════════════════════════════════════════════════════════
+//  POINT COLOR  — based on Doppler velocity magnitude
+// ══════════════════════════════════════════════════════════════════════════
+function ptColor(v) {
+  const a = Math.abs(v);
+  if (a < 0.05) return 'rgba(26,86,219,0.78)';   // blue   = static
+  if (a < 0.18) return 'rgba(217,119,6,0.82)';   // amber  = slow movement
+  return             'rgba(5,150,105,0.88)';      // green  = human Doppler
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  BUILD PLOTLY TRACE
+// ══════════════════════════════════════════════════════════════════════════
+function buildTrace(pts) {
+  if (!pts.length) pts = [{x:0,y:0,z:0,v:0}];
+  const colors = pts.map(p => ptColor(p.v));
+  const sizes  = pts.map(p => 7 + Math.abs(p.v) * 26);
+
+  if (is3D) return {
+    type: 'scatter3d', mode: 'markers',
+    x: pts.map(p=>p.x), y: pts.map(p=>p.y), z: pts.map(p=>p.z),
+    marker: {size:sizes.map(s=>s*.55), color:colors, opacity:.88,
+             line:{color:'rgba(255,255,255,.6)',width:.5}},
+    hovertemplate: 'X:%{x:.2f}  Y:%{y:.2f}  Z:%{z:.2f}<extra></extra>',
+  };
+
+  return {
+    type: 'scatter', mode: 'markers',
+    x: pts.map(p=>p.x), y: pts.map(p=>p.y),
+    marker: {size:sizes, color:colors, opacity:.88,
+             line:{color:'rgba(255,255,255,.7)',width:1}},
+    hovertemplate: 'X:%{x:.2f}<br>Y:%{y:.2f}<extra></extra>',
+  };
+}
+
+function renderPlot(pts) {
+  const trace  = buildTrace(pts);
+  const layout = is3D ? L3D : L2D;
+  if (!plotReady) { Plotly.newPlot('radarPlot',[trace],layout,PCFG); plotReady=true; }
+  else              Plotly.react('radarPlot',[trace],layout,PCFG);
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  UPDATE UI FROM API RESPONSE
+// ══════════════════════════════════════════════════════════════════════════
+function applyData(data) {
+  const pts = data.points || [];
+  renderPlot(pts);
+
+  // Status card
+  const card = document.getElementById('statusCard');
+  card.className = 'status-card ' + (data.cls || 'empty');
+  document.getElementById('statusIcon').textContent  = data.icon  || '◯';
+  document.getElementById('statusLabel').textContent = data.status || 'EMPTY SPACE';
+  document.getElementById('statusDesc').textContent  = data.sub   || '—';
+  const conf = data.confidence || 0;
+  document.getElementById('confVal').textContent    = conf + '%';
+  document.getElementById('confFill').style.width   = conf + '%';
+
+  // Frame info card
+  document.getElementById('iPoints').textContent = pts.length;
+  document.getElementById('ptBadge').textContent = pts.length + ' pts';
+
+  localFrame++;
+  const fs = String(data.frame || localFrame).padStart(4,'0');
+  document.getElementById('iFrame').textContent   = fs;
+  document.getElementById('frameNum').textContent = fs;
+  document.getElementById('iDS').textContent      = '—';
+  document.getElementById('tsDisp').textContent   =
+    new Date().toLocaleTimeString('en-US',{hour12:false});
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  SENSOR STATUS PILL
+// ══════════════════════════════════════════════════════════════════════════
+function updatePill(connected, source) {
+  const pill  = document.getElementById('livePill');
+  const label = document.getElementById('liveLabel');
+  const chip  = document.getElementById('sourceChip');
+
+  if (connected && source === 'live') {
+    pill.className  = 'live-pill';
+    label.textContent = 'LIVE';
+    chip.textContent  = 'SENSOR ACTIVE';
+    consecutiveFails  = 0;
+  } else if (connected && source === 'empty') {
+    pill.className  = 'live-pill waiting';
+    label.textContent = 'WAITING';
+    chip.textContent  = 'SENSOR IDLE';
+  } else {
+    pill.className  = 'live-pill disconnected';
+    label.textContent = 'OFFLINE';
+    chip.textContent  = 'NO SENSOR';
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  MAIN POLL LOOP — fetch /api/radar every 100ms
+// ══════════════════════════════════════════════════════════════════════════
+async function poll() {
+  try {
+    const resp = await fetch('/api/radar', {
+      signal: AbortSignal.timeout(800),   // abort if backend takes > 800ms
+    });
+
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    const data = await resp.json();
+    updatePill(data.sensor_connected, data.source);
+    applyData(data);
+    consecutiveFails = 0;
+
+  } catch (err) {
+    consecutiveFails++;
+    // After 3 fails show disconnected state
+    if (consecutiveFails >= 3) {
+      updatePill(false, 'none');
+      // Show empty plot so dashboard doesnt freeze on last frame
+      if (consecutiveFails === 3) renderPlot([]);
+    }
+    // Log only every 10th fail to avoid console spam
+    if (consecutiveFails % 10 === 1) {
+      console.warn('[mmWave] Backend unreachable:', err.message,
+                   `(${consecutiveFails} consecutive fails)`);
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  VIEW TOGGLE
+// ══════════════════════════════════════════════════════════════════════════
+function setView(mode, btn) {
+  is3D = (mode === '3d');
+  document.querySelectorAll('.vbtn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  plotReady = false;
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════════════════════
+
+// Remove dataset tabs — no longer needed for live mode
+document.getElementById('dsTabs').style.display = 'none';
+
+// Initial render with empty canvas
+renderPlot([]);
+
+// Start polling at 100ms
+poll();
+setInterval(poll, POLL_MS);
+</script>
+</body>
+</html>
